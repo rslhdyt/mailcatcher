@@ -45,6 +45,14 @@ OptionParser.new do |parser|
     options[:no_exit] = true
   end
 
+  parser.on('-u USERNAME', '--username USERNAME', 'SMTP username for inbox separation') do |username|
+    options[:username] = username
+  end
+
+  parser.on('-p PASSWORD', '--password PASSWORD', 'SMTP password') do |password|
+    options[:password] = password
+  end
+
   parser.on('-h', '--help', 'Display this help information') do
     puts parser
     exit!
@@ -52,9 +60,18 @@ OptionParser.new do |parser|
 end.parse!
 
 Mail.defaults do
-  delivery_method :smtp,
+  smtp_config = {
     :address => options[:smtp_ip],
     :port => options[:smtp_port]
+  }
+  
+  if options[:username]
+    smtp_config[:user_name] = options[:username]
+    smtp_config[:password] = options[:password] || ''
+    smtp_config[:authentication] = :plain
+  end
+  
+  delivery_method :smtp, smtp_config
 end
 
 message = Mail.new($stdin.read)

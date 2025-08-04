@@ -75,6 +75,7 @@ module MailCatcher extend self
     :daemon => !windows?,
     :browse => false,
     :quit => true,
+    :default_inbox => 'default'
   }
 
   def options
@@ -122,6 +123,10 @@ module MailCatcher extend self
           clean_path = Rack::Utils.clean_path_info("/#{path}")
 
           options[:http_path] = clean_path
+        end
+
+        parser.on("--default-inbox NAME", "Default inbox name for unauthenticated emails") do |name|
+          options[:default_inbox] = name
         end
 
         parser.on("--no-quit", "Don't allow quitting the process") do

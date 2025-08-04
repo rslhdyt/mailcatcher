@@ -14,3 +14,6 @@
 
 # Temp area, used for testing artifacts
 /tmp
+
+# Database file
+mailcatcher.db

@@ -110,6 +110,20 @@ class MailCatcher
             alert "Error while removing message."
       false
 
+    # Inbox selector handling
+    $("#inbox-selector").on "change", (e) =>
+      @currentInbox = $(e.currentTarget).val()
+      @loadInbox(@currentInbox)
+    
+    # Clear inbox button
+    $("nav.app .clear-inbox a").on "click", (e) =>
+      e.preventDefault()
+      if @currentInbox && confirm "Clear all messages in '#{@currentInbox}' inbox?"
+        @clearInbox(@currentInbox)
+      else if !@currentInbox
+        alert "Please select an inbox to clear"
+    
+    @loadInboxes()
     @refresh()
     @subscribe()
 
@@ -183,6 +197,7 @@ class MailCatcher
 
   addMessage: (message) ->
     $("<tr />").attr("data-message-id", message.id.toString())
+      .append($("<td/>").text(message.inbox or "default").addClass("inbox-badge"))
       .append($("<td/>").text(message.sender or "No sender").toggleClass("blank", !message.sender))
       .append($("<td/>").text((message.recipients || []).join(", ") or "No recipients").toggleClass("blank", !message.recipients.length))
       .append($("<td/>").text(message.subject or "No subject").toggleClass("blank", !message.subject))
@@ -193,9 +208,17 @@ class MailCatcher
   removeMessage: (id) ->
     messageRow = $("""#messages tbody tr[data-message-id="#{id}"]""")
     isSelected = messageRow.is(".selected")
+    
+    # Extract inbox from the first column before removing the row
+    inbox = messageRow.find("td.inbox-badge").first().text()
+    
     if isSelected
       switchTo = messageRow.next().data("message-id") || messageRow.prev().data("message-id")
     messageRow.remove()
+    
+    # Update inbox counter
+    @updateInboxCounter(inbox, -1) if inbox
+    
     if isSelected
       if switchTo
         @loadMessage switchTo
@@ -235,6 +258,7 @@ class MailCatcher
 
       $.getJSON "messages/#{id}.json", (message) =>
         $("#message .metadata dd.created_at").text(@formatDate message.created_at)
+        $("#message .metadata dd.inbox").text(message.inbox or "default")
         $("#message .metadata dd.from").text(message.sender)
         $("#message .metadata dd.to").text((message.recipients || []).join(", "))
         $("#message .metadata dd.subject").text(message.subject)
@@ -298,11 +322,61 @@ class MailCatcher
         message_iframe.find("html").html("""<body style="font-family: sans-serif; white-space: pre-wrap">#{text}</body>""")
 
   refresh: ->
-    $.getJSON "messages", (messages) =>
+    url = "messages"
+    url += "?inbox=#{encodeURIComponent(@currentInbox)}" if @currentInbox
+    
+    $.getJSON url, (messages) =>
       $.each messages, (i, message) =>
         unless @haveMessage message
           @addMessage message
       @updateMessagesCount()
+
+  loadInboxes: ->
+    $.getJSON "inboxes", (inboxes) =>
+      selector = $("#inbox-selector")
+      selector.find("option:not(:first)").remove()
+      
+      $.each inboxes, (i, inbox) =>
+        option = $("<option>")
+          .val(inbox.inbox)
+          .text("#{inbox.inbox} (#{inbox.count})")
+        selector.append(option)
+
+  loadInbox: (inbox) ->
+    @currentInbox = inbox
+    @clearMessages()
+    @refresh()
+
+  clearInbox: (inbox) ->
+    $.ajax
+      url: "inboxes/#{encodeURIComponent(inbox)}"
+      type: "DELETE"
+      success: =>
+        @loadInbox(inbox)
+        @loadInboxes()
+      error: ->
+        alert "Error while clearing inbox."
+
+  updateInboxCounter: (inbox, increment) ->
+    return unless inbox
+    selector = $("#inbox-selector")
+    option = selector.find("option[value='#{inbox}']")
+    
+    if option.length > 0
+      # Parse current count from text format "inbox_name (count)"
+      currentText = option.text()
+      match = currentText.match(/^(.*?)\s*\((\d+)\)$/)
+      if match
+        inboxName = match[1]
+        currentCount = parseInt(match[2])
+        newCount = Math.max(0, currentCount + increment)
+        option.text("#{inboxName} (#{newCount})")
+    else if increment > 0
+      # Inbox doesn't exist in selector, add it with the increment as initial count
+      newOption = $("<option>")
+        .val(inbox)
+        .text("#{inbox} (#{increment})")
+      selector.append(newOption)
 
   subscribe: ->
     if WebSocket?
@@ -314,15 +388,25 @@ class MailCatcher
     secure = window.location.protocol is "https:"
     url = new URL("messages", document.baseURI)
     url.protocol = if secure then "wss" else "ws"
+    url.searchParams.set("inbox", @currentInbox) if @currentInbox
     @websocket = new WebSocket(url.toString())
     @websocket.onmessage = (event) =>
       data = JSON.parse(event.data)
       if data.type == "add"
-        @addMessage(data.message)
+        # Only add message if it matches current inbox filter
+        if !@currentInbox || data.message?.inbox == @currentInbox
+          @addMessage(data.message)
+        # Update inbox selector counter
+        @updateInboxCounter(data.message?.inbox || "default", 1)
       else if data.type == "remove"
         @removeMessage(data.id)
       else if data.type == "clear"
         @clearMessages()
+        @loadInboxes()
+      else if data.type == "clear_inbox"
+        if data.inbox == @currentInbox
+          @clearMessages()
+        @loadInboxes()
       else if data.type == "quit" and not @quitting
         alert "MailCatcher has been quit"
         @hasQuit()

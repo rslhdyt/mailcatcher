@@ -8,10 +8,11 @@ require "sqlite3"
 module MailCatcher::Mail extend self
   def db
     @__db ||= begin
-      SQLite3::Database.new(":memory:", :type_translation => true).tap do |db|
+      SQLite3::Database.new("mailcatcher.db", :type_translation => true).tap do |db|
         db.execute(<<-SQL)
-          CREATE TABLE message (
+          CREATE TABLE IF NOT EXISTS message (
             id INTEGER PRIMARY KEY ASC,
+            inbox TEXT,
             sender TEXT,
             recipients TEXT,
             subject TEXT,
@@ -22,7 +23,7 @@ module MailCatcher::Mail extend self
           )
         SQL
         db.execute(<<-SQL)
-          CREATE TABLE message_part (
+          CREATE TABLE IF NOT EXISTS message_part (
             id INTEGER PRIMARY KEY ASC,
             message_id INTEGER NOT NULL,
             cid TEXT,
@@ -36,16 +37,19 @@ module MailCatcher::Mail extend self
             FOREIGN KEY (message_id) REFERENCES message (id) ON DELETE CASCADE
           )
         SQL
+        db.execute("CREATE INDEX IF NOT EXISTS idx_message_inbox ON message(inbox)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_message_inbox_created_at ON message(inbox, created_at)")
         db.execute("PRAGMA foreign_keys = ON")
       end
     end
   end
 
   def add_message(message)
-    @add_message_query ||= db.prepare("INSERT INTO message (sender, recipients, subject, source, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))")
+    @add_message_query ||= db.prepare("INSERT INTO message (inbox, sender, recipients, subject, source, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))")
 
     mail = Mail.new(message[:source])
-    @add_message_query.execute(message[:sender], JSON.generate(message[:recipients]), mail.subject, message[:source], mail.mime_type || "text/plain", message[:source].length)
+    inbox = message[:inbox]
+    @add_message_query.execute(inbox, message[:sender], JSON.generate(message[:recipients]), mail.subject, message[:source], mail.mime_type || "text/plain", message[:source].length)
     message_id = db.last_insert_row_id
     parts = mail.all_parts
     parts = [mail] if parts.empty?
@@ -57,8 +61,8 @@ module MailCatcher::Mail extend self
     end
 
     EventMachine.next_tick do
-      message = MailCatcher::Mail.message message_id
-      MailCatcher::Bus.push(type: "add", message: message)
+      message_data = MailCatcher::Mail.message message_id
+      MailCatcher::Bus.push(type: "add", message: message_data, inbox: inbox)
     end
   end
 
@@ -72,17 +76,30 @@ module MailCatcher::Mail extend self
     @latest_created_at_query.execute.next
   end
 
-  def messages
-    @messages_query ||= db.prepare "SELECT id, sender, recipients, subject, size, created_at FROM message ORDER BY created_at, id ASC"
-    @messages_query.execute.map do |row|
-      Hash[row.fields.zip(row)].tap do |message|
-        message["recipients"] &&= JSON.parse(message["recipients"])
+  def messages(inbox = nil)
+    if inbox
+      @messages_with_inbox_query ||= db.prepare "SELECT id, inbox, sender, recipients, subject, size, created_at FROM message WHERE inbox = ? ORDER BY created_at, id ASC"
+      result = @messages_with_inbox_query.execute(inbox.to_s.strip).map do |row|
+        Hash[row.fields.zip(row)].tap do |message|
+          message["recipients"] &&= JSON.parse(message["recipients"])
+        end
       end
+      puts "DEBUG: Found #{result.length} messages for inbox #{inbox.inspect}"
+      result
+    else
+      @messages_query ||= db.prepare "SELECT id, inbox, sender, recipients, subject, size, created_at FROM message ORDER BY inbox, created_at, id ASC"
+      result = @messages_query.execute.map do |row|
+        Hash[row.fields.zip(row)].tap do |message|
+          message["recipients"] &&= JSON.parse(message["recipients"])
+        end
+      end
+      puts "DEBUG: Found #{result.length} total messages"
+      result
     end
   end
 
   def message(id)
-    @message_query ||= db.prepare "SELECT id, sender, recipients, subject, size, type, created_at FROM message WHERE id = ? LIMIT 1"
+    @message_query ||= db.prepare "SELECT id, inbox, sender, recipients, subject, size, type, created_at FROM message WHERE id = ? LIMIT 1"
     row = @message_query.execute(id).next
     row && Hash[row.fields.zip(row)].tap do |message|
       message["recipients"] &&= JSON.parse(message["recipients"])
@@ -178,6 +195,22 @@ module MailCatcher::Mail extend self
       Hash[row.fields.zip(row)]
     end.each do |message|
       delete_message!(message["id"])
+    end
+  end
+
+  def inboxes
+    @inboxes_query ||= db.prepare "SELECT inbox, COUNT(*) as count FROM message GROUP BY inbox ORDER BY inbox"
+    @inboxes_query.execute.map do |row|
+      Hash[row.fields.zip(row)]
+    end
+  end
+
+  def delete_inbox!(inbox)
+    @delete_inbox_query ||= db.prepare "DELETE FROM message WHERE inbox = ?"
+    @delete_inbox_query.execute(inbox)
+
+    EventMachine.next_tick do
+      MailCatcher::Bus.push(type: "clear_inbox", inbox: inbox)
     end
   end
 end

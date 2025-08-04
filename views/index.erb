@@ -19,8 +19,15 @@
     <h1><a href="https://mailcatcher.me" target="_blank">MailCatcher</a></h1>
     <nav class="app">
       <ul>
+        <li class="inbox-selector">
+          <select id="inbox-selector">
+            <option value="">All Inboxes</option>
+            <!-- Populated dynamically -->
+          </select>
+        </li>
         <li class="search"><input type="search" name="search" placeholder="Search messages..." incremental="true" /></li>
         <li class="clear"><a href="#" title="Clear all messages">Clear</a></li>
+        <li class="clear-inbox"><a href="#" title="Clear current inbox">Clear Inbox</a></li>
         <% if MailCatcher.quittable? %>
           <li class="quit"><a href="#" title="Quit MailCatcher">Quit</a></li>
         <% end %>
@@ -31,6 +38,7 @@
     <table>
       <thead>
         <tr>
+          <th>Inbox</th>
           <th>From</th>
           <th>To</th>
           <th>Subject</th>
@@ -46,6 +54,8 @@
       <dl class="metadata">
         <dt class="created_at">Received</dt>
         <dd class="created_at"></dd>
+        <dt class="inbox">Inbox</dt>
+        <dd class="inbox"></dd>
         <dt class="from">From</dt>
         <dd class="from"></dd>
         <dt class="to">To</dt>

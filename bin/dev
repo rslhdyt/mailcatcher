@@ -1,0 +1,5 @@
+#!/bin/bash
+
+export MAILCATCHER_ENV=development
+
+bundle exec bin/mailcatcher --verbose --foreground "$@"

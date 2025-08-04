@@ -77,7 +77,14 @@ module MailCatcher
         end
       end
 
+      get "/inboxes" do
+        content_type :json
+        JSON.generate(Mail.inboxes)
+      end
+
       get "/messages" do
+        inbox = params[:inbox]
+        
         if request.websocket?
           bus_subscription = nil
 
@@ -85,7 +92,10 @@ module MailCatcher
           ws.on(:open) do |_|
             bus_subscription = MailCatcher::Bus.subscribe do |message|
               begin
-                ws.send(JSON.generate(message))
+                # Only send messages for the relevant inbox
+                if inbox.nil? || message[:inbox] == inbox
+                  ws.send(JSON.generate(message))
+                end
               rescue => exception
                 MailCatcher.log_exception("Error sending message through websocket", message, exception)
               end
@@ -99,12 +109,18 @@ module MailCatcher
           ws.rack_response
         else
           content_type :json
-          JSON.generate(Mail.messages)
+          JSON.generate(Mail.messages(inbox))
         end
       end
 
       delete "/messages" do
         Mail.delete!
+        status 204
+      end
+
+      delete "/inboxes/:inbox" do
+        inbox = params[:inbox]
+        Mail.delete_inbox!(inbox)
         status 204
       end
 

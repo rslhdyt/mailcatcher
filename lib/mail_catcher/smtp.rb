@@ -5,6 +5,9 @@ require "eventmachine"
 require "mail_catcher/mail"
 
 class MailCatcher::Smtp < EventMachine::Protocols::SmtpServer
+  @@parms ||= {}
+  @@parms[:auth] = true
+
   # We override EM's mail from processing to allow multiple mail-from commands
   # per [RFC 2821](https://tools.ietf.org/html/rfc2821#section-4.1.1.2)
   def process_mail_from sender
@@ -16,7 +19,27 @@ class MailCatcher::Smtp < EventMachine::Protocols::SmtpServer
 
     super
   end
-
+  
+  def process_auth_line(line)
+    begin
+      plain = line.unpack("m").first
+      _, user, password = plain.split("\000")
+      
+      if receive_plain_auth(user, password)
+        @authenticated_user = user.to_s.strip
+        send_data "235 authentication ok\r\n"
+        @state << :auth
+      else
+        send_data "535 authentication failed\r\n"
+      end
+    rescue => e
+      puts "==> SMTP: Auth decoding error: #{e.message}"
+      send_data "535 authentication failed\r\n"
+    ensure
+      @state.delete(:auth_incomplete)
+    end
+  end
+  
   def current_message
     @current_message ||= {}
   end
@@ -33,6 +56,7 @@ class MailCatcher::Smtp < EventMachine::Protocols::SmtpServer
     sender = $` if sender =~ / SIZE=\d+\z/
 
     current_message[:sender] = sender
+    current_message[:inbox] = current_inbox
 
     true
   end
@@ -64,5 +88,11 @@ class MailCatcher::Smtp < EventMachine::Protocols::SmtpServer
     false
   ensure
     @current_message = nil
+  end
+
+  def current_inbox
+    inbox = @authenticated_user || MailCatcher.options[:default_inbox] || 'default'
+    
+    inbox.to_s.strip
   end
 end
