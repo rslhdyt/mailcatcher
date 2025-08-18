@@ -1,15 +1,15 @@
 FROM ruby:3.3-alpine
 MAINTAINER Samuel Cochran <sj26@sj26.com>
 
-# Use --build-arg VERSION=... to override
-# or `rake docker VERSION=...`
-ARG VERSION=0.10.0
+ARG VERSION=0.12.0
+
+COPY ./mailcatcher-${VERSION}.gem /tmp/
 
 # sqlite3 aarch64 is broken on alpine, so use ruby:
 # https://github.com/sparklemotion/sqlite3-ruby/issues/372
-RUN apk add --no-cache build-base sqlite-libs sqlite-dev && \
+RUN apk add --no-cache build-base sqlite-libs sqlite-dev libstdc++ && \
     ( [ "$(uname -m)" != "aarch64" ] || gem install sqlite3 --version="~> 1.3" --platform=ruby ) && \
-    gem install mailcatcher -v "$VERSION" && \
+    gem install /tmp/mailcatcher-0.11.0.gem && \
     apk del --rdepends --purge build-base sqlite-dev
 
 EXPOSE 1025 1080

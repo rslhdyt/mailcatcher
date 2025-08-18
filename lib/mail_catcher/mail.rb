@@ -8,7 +8,7 @@ require "sqlite3"
 module MailCatcher::Mail extend self
   def db
     @__db ||= begin
-      SQLite3::Database.new("mailcatcher.db", :type_translation => true).tap do |db|
+      SQLite3::Database.new(":memory:", :type_translation => true).tap do |db|
         db.execute(<<-SQL)
           CREATE TABLE IF NOT EXISTS message (
             id INTEGER PRIMARY KEY ASC,

@@ -32,7 +32,7 @@ Gem::Specification.new do |s|
 
   s.required_ruby_version = ">= 3.1"
 
-  s.add_dependency "eventmachine", "~> 1.0"
+  s.add_dependency "eventmachine", "~> 1.2.7"
   s.add_dependency "faye-websocket", "~> 0.11.1"
   s.add_dependency "mail", "~> 2.3"
   s.add_dependency "net-smtp"

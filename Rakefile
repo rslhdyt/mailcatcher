@@ -57,8 +57,8 @@ task "docker" do
       # Version respected within Dockerfile
       "--build-arg", "VERSION=#{version}",
       # Push latest and version
-      "-t", "sj26/mailcatcher:latest",
-      "-t", "sj26/mailcatcher:v#{version}",
+      "-t", "rslhdyt/mailcatcher:latest",
+      "-t", "rslhdyt/mailcatcher:v#{version}",
       # Use current dir as context
       "."
   end
