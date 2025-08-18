@@ -9,7 +9,7 @@ COPY ./mailcatcher-${VERSION}.gem /tmp/
 # https://github.com/sparklemotion/sqlite3-ruby/issues/372
 RUN apk add --no-cache build-base sqlite-libs sqlite-dev libstdc++ && \
     ( [ "$(uname -m)" != "aarch64" ] || gem install sqlite3 --version="~> 1.3" --platform=ruby ) && \
-    gem install /tmp/mailcatcher-0.11.0.gem && \
+    gem install /tmp/mailcatcher-${VERSION}.gem && \
     apk del --rdepends --purge build-base sqlite-dev
 
 EXPOSE 1025 1080
