@@ -5,10 +5,10 @@ ARG VERSION=0.12.0
 
 COPY ./mailcatcher-${VERSION}.gem /tmp/
 
-# sqlite3 aarch64 is broken on alpine, so use ruby:
+# sqlite3 needs to be compiled from source on Alpine Linux (musl libc incompatibility)
 # https://github.com/sparklemotion/sqlite3-ruby/issues/372
 RUN apk add --no-cache build-base sqlite-libs sqlite-dev libstdc++ && \
-    ( [ "$(uname -m)" != "aarch64" ] || gem install sqlite3 --version="~> 1.3" --platform=ruby ) && \
+    gem install sqlite3 --version="~> 1.3" --platform=ruby && \
     gem install /tmp/mailcatcher-${VERSION}.gem && \
     apk del --rdepends --purge build-base sqlite-dev
 
