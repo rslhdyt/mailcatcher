@@ -8,7 +8,7 @@ require "sqlite3"
 module MailCatcher::Mail extend self
   def db
     @__db ||= begin
-      SQLite3::Database.new(":memory:", :type_translation => true).tap do |db|
+      SQLite3::Database.new("mailcatcher.db", :type_translation => true).tap do |db|
         db.execute(<<-SQL)
           CREATE TABLE IF NOT EXISTS message (
             id INTEGER PRIMARY KEY ASC,
@@ -45,10 +45,10 @@ module MailCatcher::Mail extend self
   end
 
   def add_message(message)
-    @add_message_query ||= db.prepare("INSERT INTO message (inbox, sender, recipients, subject, source, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))")
+    @add_message_query ||= db.prepare("INSERT INTO message (inbox, sender, recipients, subject, source, type, size, created_at) VALUES (CAST(? AS TEXT), ?, ?, ?, ?, ?, ?, datetime('now'))")
 
     mail = Mail.new(message[:source])
-    inbox = message[:inbox]
+    inbox = message[:inbox].to_s.encode("UTF-8", invalid: :replace, undef: :replace).strip
     @add_message_query.execute(inbox, message[:sender], JSON.generate(message[:recipients]), mail.subject, message[:source], mail.mime_type || "text/plain", message[:source].length)
     message_id = db.last_insert_row_id
     parts = mail.all_parts
